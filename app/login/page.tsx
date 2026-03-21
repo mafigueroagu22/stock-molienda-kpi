@@ -13,23 +13,44 @@ const sb = createClient(
 
 export default function Login() {
   const router = useRouter()
+  const [mode,     setMode]     = useState<'login' | 'signup'>('login')
   const [email,    setEmail]    = useState('')
   const [password, setPassword] = useState('')
+  const [nombre,   setNombre]   = useState('')
   const [loading,  setLoading]  = useState(false)
   const [error,    setError]    = useState('')
+  const [success,  setSuccess]  = useState('')
   const [showPass, setShowPass] = useState(false)
 
-  const login = async (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     setError('')
-    const { error: err } = await sb.auth.signInWithPassword({ email, password })
-    if (err) {
-      setError('Credenciales incorrectas. Contacta al administrador de sistema.')
-      setLoading(false)
+    setSuccess('')
+
+    if (mode === 'login') {
+      const { error: err } = await sb.auth.signInWithPassword({ email, password })
+      if (err) {
+        setError('Credenciales incorrectas. Verifica tu email y contraseña.')
+        setLoading(false)
+      } else {
+        router.push('/')
+        router.refresh()
+      }
     } else {
-      router.push('/')
-      router.refresh()
+      const { error: err } = await sb.auth.signUp({
+        email,
+        password,
+        options: { data: { nombre } },
+      })
+      if (err) {
+        setError(err.message)
+        setLoading(false)
+      } else {
+        setSuccess('Cuenta creada. Revisa tu correo para confirmar o inicia sesión directamente.')
+        setMode('login')
+        setLoading(false)
+      }
     }
   }
 
@@ -38,7 +59,7 @@ export default function Login() {
 
       {/* Background grid */}
       <div
-        className="fixed inset-0 opacity-[0.03]"
+        className="fixed inset-0 opacity-[0.03] pointer-events-none"
         style={{
           backgroundImage: 'linear-gradient(#3b82f6 1px, transparent 1px), linear-gradient(90deg, #3b82f6 1px, transparent 1px)',
           backgroundSize: '40px 40px',
@@ -46,7 +67,7 @@ export default function Login() {
       />
 
       {/* Glow */}
-      <div className="fixed top-1/4 left-1/2 -translate-x-1/2 w-96 h-96 bg-blue-600/10 rounded-full blur-3xl pointer-events-none" />
+      <div className="fixed top-1/3 left-1/2 -translate-x-1/2 w-[500px] h-[300px] bg-blue-600/8 rounded-full blur-3xl pointer-events-none" />
 
       <div className="relative w-full max-w-sm animate-fade-in">
 
@@ -63,20 +84,49 @@ export default function Login() {
 
         {/* Card */}
         <div className="bg-slate-800/70 backdrop-blur-xl border border-slate-700/50 rounded-2xl p-7 shadow-2xl shadow-black/50">
-          <h2 className="text-white font-bold text-base mb-1">Iniciar sesión</h2>
-          <p className="text-slate-500 text-xs mb-6">Acceso restringido al equipo de producción</p>
+
+          {/* Mode toggle */}
+          <div className="flex bg-slate-700/60 rounded-xl p-1 mb-6">
+            <button
+              type="button"
+              onClick={() => { setMode('login'); setError(''); setSuccess('') }}
+              className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-all ${mode === 'login' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200'}`}
+            >Iniciar sesión</button>
+            <button
+              type="button"
+              onClick={() => { setMode('signup'); setError(''); setSuccess('') }}
+              className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-all ${mode === 'signup' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200'}`}
+            >Crear cuenta</button>
+          </div>
 
           {error && (
-            <div className="bg-red-500/10 border border-red-500/30 text-red-400 text-sm rounded-xl px-4 py-3 mb-5">
+            <div className="bg-red-500/10 border border-red-500/30 text-red-400 text-sm rounded-xl px-4 py-3 mb-4">
               {error}
             </div>
           )}
+          {success && (
+            <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-sm rounded-xl px-4 py-3 mb-4">
+              {success}
+            </div>
+          )}
 
-          <form onSubmit={login} className="space-y-4">
+          <form onSubmit={submit} className="space-y-4">
+            {mode === 'signup' && (
+              <div>
+                <label className="block text-xs font-medium text-slate-400 mb-1.5">Nombre completo</label>
+                <input
+                  type="text"
+                  value={nombre}
+                  onChange={e => setNombre(e.target.value)}
+                  placeholder="Tu nombre"
+                  required
+                  className="w-full bg-slate-700/80 border border-slate-600/60 rounded-xl px-4 py-3 text-white text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all"
+                />
+              </div>
+            )}
+
             <div>
-              <label className="block text-xs font-medium text-slate-400 mb-1.5">
-                Correo electrónico
-              </label>
+              <label className="block text-xs font-medium text-slate-400 mb-1.5">Correo electrónico</label>
               <input
                 type="email"
                 value={email}
@@ -84,14 +134,13 @@ export default function Login() {
                 placeholder="usuario@polpaico.cl"
                 required
                 autoComplete="email"
-                className="w-full bg-slate-700/80 border border-slate-600/60 rounded-xl px-4 py-3 text-white text-sm placeholder-slate-500
-                           focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all"
+                className="w-full bg-slate-700/80 border border-slate-600/60 rounded-xl px-4 py-3 text-white text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all"
               />
             </div>
 
             <div>
               <label className="block text-xs font-medium text-slate-400 mb-1.5">
-                Contraseña
+                Contraseña {mode === 'signup' && <span className="text-slate-600">(mín. 6 caracteres)</span>}
               </label>
               <div className="relative">
                 <input
@@ -100,9 +149,9 @@ export default function Login() {
                   onChange={e => setPassword(e.target.value)}
                   placeholder="••••••••"
                   required
-                  autoComplete="current-password"
-                  className="w-full bg-slate-700/80 border border-slate-600/60 rounded-xl px-4 py-3 pr-11 text-white text-sm placeholder-slate-500
-                             focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all"
+                  minLength={6}
+                  autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+                  className="w-full bg-slate-700/80 border border-slate-600/60 rounded-xl px-4 py-3 pr-11 text-white text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all"
                 />
                 <button
                   type="button"
@@ -118,25 +167,22 @@ export default function Login() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-blue-600/50 disabled:cursor-not-allowed
-                         text-white font-semibold rounded-xl py-3 text-sm transition-all duration-150
-                         shadow-lg shadow-blue-600/20 hover:shadow-blue-500/30 mt-2"
+              className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold rounded-xl py-3 text-sm transition-all shadow-lg shadow-blue-600/20 mt-2"
             >
               {loading ? (
                 <span className="flex items-center justify-center gap-2">
                   <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  Verificando…
+                  {mode === 'login' ? 'Verificando…' : 'Creando cuenta…'}
                 </span>
               ) : (
-                'Ingresar al Dashboard'
+                mode === 'login' ? 'Ingresar al Dashboard' : 'Crear mi cuenta'
               )}
             </button>
           </form>
         </div>
 
-        {/* Footer */}
-        <p className="text-center text-slate-600 text-xs mt-6">
-          ¿Sin acceso? Contacta al administrador del sistema
+        <p className="text-center text-slate-600 text-xs mt-5">
+          Solo personal autorizado de Polpaico Coronel
         </p>
       </div>
     </div>
