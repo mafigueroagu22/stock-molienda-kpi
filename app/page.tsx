@@ -2,6 +2,8 @@
 
 import { createClient } from '@supabase/supabase-js'
 import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useRouter } from 'next/navigation'
+import type { User } from '@supabase/supabase-js'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
   RadialBarChart, RadialBar, PolarAngleAxis,
@@ -634,6 +636,9 @@ function JsonPanel({ data }: { data: Record<string, unknown> }) {
 type Tab = 'silos' | 'tolvas' | 'tanques' | 'despacho' | 'consumos'
 
 export default function Dashboard() {
+  const router = useRouter()
+  const [user,      setUser]      = useState<User | null>(null)
+  const [authReady, setAuthReady] = useState(false)
   const [silos,     setSilos]     = useState<Silo[]>([])
   const [tolvas,    setTolvas]    = useState<Tolva[]>([])
   const [tanques,   setTanques]   = useState<Tanque[]>([])
@@ -646,6 +651,25 @@ export default function Dashboard() {
   const [editTolva,  setEditTolva]  = useState<Tolva | null>(null)
   const [editTanque, setEditTanque] = useState<Tanque | null>(null)
   const [lastUpdated, setLastUpdated] = useState('')
+
+  // ── Auth guard ──────────────────────────────────────────────
+  useEffect(() => {
+    sb.auth.getSession().then(({ data: { session } }) => {
+      if (!session) { router.push('/login'); return }
+      setUser(session.user)
+      setAuthReady(true)
+    })
+    const { data: { subscription } } = sb.auth.onAuthStateChange((_, session) => {
+      if (!session) { router.push('/login'); return }
+      setUser(session.user)
+    })
+    return () => subscription.unsubscribe()
+  }, [router])
+
+  const logout = async () => {
+    await sb.auth.signOut()
+    router.push('/login')
+  }
 
   const loadAll = useCallback(async () => {
     const [s, t, tk, d, c] = await Promise.all([
@@ -754,8 +778,17 @@ export default function Dashboard() {
     { id: 'consumos', label: 'Consumos',          icon: '⚙️', count: consumos.length },
   ]
 
+  if (!authReady) return (
+    <div className="min-h-screen bg-[#080e1a] flex items-center justify-center">
+      <div className="text-center">
+        <div className="w-10 h-10 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+        <p className="text-slate-500 text-sm">Verificando acceso…</p>
+      </div>
+    </div>
+  )
+
   if (loading) return (
-    <div className="min-h-screen bg-navy-900 flex items-center justify-center">
+    <div className="min-h-screen bg-[#080e1a] flex items-center justify-center">
       <div className="text-center">
         <div className="w-12 h-12 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
         <p className="text-slate-400 text-sm">Cargando datos de molienda…</p>
@@ -785,8 +818,8 @@ export default function Dashboard() {
 
           <div className="flex items-center gap-2">
             {lastUpdated && (
-              <span className="text-slate-600 text-xs hidden sm:block">
-                Actualizado {lastUpdated}
+              <span className="text-slate-600 text-xs hidden lg:block">
+                ↻ {lastUpdated}
               </span>
             )}
             <button
@@ -795,12 +828,33 @@ export default function Dashboard() {
             >
               {'{ }'} JSON
             </button>
-            <button onClick={loadAll} className="btn-ghost px-3 py-1.5 text-xs">
+            <button onClick={loadAll} className="btn-ghost px-3 py-1.5 text-xs" title="Actualizar">
               ↻
             </button>
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 hidden sm:flex">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse-slow" />
               <span className="text-slate-500 text-xs">Live</span>
+            </div>
+            {/* User + logout */}
+            <div className="flex items-center gap-2 pl-2 border-l border-slate-700/60">
+              <div className="hidden md:flex flex-col items-end">
+                <span className="text-slate-300 text-xs font-medium leading-none">
+                  {user?.email?.split('@')[0]}
+                </span>
+                <span className="text-slate-600 text-xs leading-none mt-0.5">
+                  {user?.email?.split('@')[1]}
+                </span>
+              </div>
+              <div className="w-7 h-7 bg-blue-600/30 border border-blue-500/30 rounded-full flex items-center justify-center text-blue-300 text-xs font-bold uppercase">
+                {user?.email?.[0] ?? '?'}
+              </div>
+              <button
+                onClick={logout}
+                className="btn-ghost px-2.5 py-1.5 text-xs text-slate-400 hover:text-red-400"
+                title="Cerrar sesión"
+              >
+                ⎋
+              </button>
             </div>
           </div>
         </div>
