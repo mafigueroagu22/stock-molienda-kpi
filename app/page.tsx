@@ -24,7 +24,8 @@ const sb = createClient(
 const today = new Date()
 const todayStr = format(today, 'yyyy-MM-dd')
 const fmt = (n: number) => n?.toLocaleString('es-CL', { maximumFractionDigits: 0 }) ?? '—'
-const fmtDec = (n: number, d = 1) => n?.toFixed(d) ?? '—'
+const fmtDec = (n: number | string | null | undefined, d = 1) =>
+  (n == null || n === '') ? '—' : Number(n).toFixed(d)
 const pctOf = (a: number, b: number) => (b > 0 ? Math.min(100, Math.round((a / b) * 100)) : 0)
 const sapDiffPct = (fisico: number, sap: number) =>
   sap > 0 ? (((fisico - sap) / sap) * 100).toFixed(1) : '0.0'
