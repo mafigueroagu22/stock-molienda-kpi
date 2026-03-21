@@ -8,6 +8,13 @@ export type Silo = {
   stock_plan: number
   densidad: number
   capacidad_max: number
+  espacio_mar: number | null
+  espacio_centro: number | null
+  espacio_cerro: number | null
+  espacio_promedio: number | null
+  pantalla_ton: number | null
+  hora: string | null
+  realizado_por: string | null
   observaciones: string
   updated_at: string
 }
@@ -31,10 +38,13 @@ export type Tanque = {
   fecha: string
   tipo: string
   nombre: string
+  codigo: string | null
   stock_real: number
   stock_sap: number
   unidad: string
   consumo_estimado: number
+  porcentaje: number | null
+  capacidad_diseno: number | null
   observaciones: string
   updated_at: string
 }

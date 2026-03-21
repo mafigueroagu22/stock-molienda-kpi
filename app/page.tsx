@@ -117,80 +117,244 @@ function GaugeRadial({ value, max, size = 80 }: { value: number; max: number; si
   )
 }
 
+// ─── Animated SVG Silo ────────────────────────────────────────────────────────
+function SiloAnimado({ pct, size = 160 }: { pct: number; size?: number }) {
+  const color = levelColor(pct)
+  const colorDim = pct >= 60 ? '#166534' : pct >= 30 ? '#78350f' : '#7f1d1d'
+
+  // Geometry (all relative to viewBox 0 0 100 220)
+  // Body: x=20..80, y=20..170 (cylinder)
+  // Dome top: ellipse at y=20, rx=30, ry=8
+  // Cone bottom: y=170..195, narrows to x=45..55
+  // Discharge nozzle: 45..55, y=195..205
+  // Legs: 2 lines from y=205 down to y=220
+  // Ladder: right side
+
+  const bodyTop = 20
+  const bodyBot = 170
+  const coneBot = 195
+  const bodyH = bodyBot - bodyTop     // 150
+  const fillH = (pct / 100) * bodyH   // actual fill height in units
+  const fillTop = bodyBot - fillH      // y where fill starts (from top)
+
+  // Clip path: just the cylinder body + cone (filled region)
+  const clipId = `clip-silo-${pct}`
+
+  return (
+    <svg
+      viewBox="0 0 100 230"
+      width={size}
+      height={size * 230 / 100}
+      className="drop-shadow-xl"
+      aria-label={`Silo al ${pct}%`}
+    >
+      <defs>
+        <clipPath id={clipId}>
+          {/* Clip to cylinder body */}
+          <rect x="20" y={bodyTop} width="60" height={bodyH} />
+        </clipPath>
+        <linearGradient id={`grad-fill-${pct}`} x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stopColor={colorDim} />
+          <stop offset="40%" stopColor={color} stopOpacity="0.9" />
+          <stop offset="100%" stopColor={colorDim} />
+        </linearGradient>
+        <linearGradient id="grad-shell" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stopColor="#1e3a5f" />
+          <stop offset="50%" stopColor="#2d5a8e" stopOpacity="0.6" />
+          <stop offset="100%" stopColor="#1e3a5f" />
+        </linearGradient>
+      </defs>
+
+      {/* === Legs === */}
+      <line x1="30" y1={coneBot} x2="25" y2="225" stroke="#334155" strokeWidth="3" strokeLinecap="round" />
+      <line x1="70" y1={coneBot} x2="75" y2="225" stroke="#334155" strokeWidth="3" strokeLinecap="round" />
+      <line x1="25" y1="215" x2="75" y2="215" stroke="#334155" strokeWidth="1.5" />
+
+      {/* === Cone (empty) === */}
+      <polygon
+        points={`20,${bodyBot} 80,${bodyBot} 55,${coneBot} 45,${coneBot}`}
+        fill="#0f172a"
+        stroke="#1e3a5f"
+        strokeWidth="1"
+      />
+
+      {/* === Fill inside cylinder (clipped) === */}
+      <rect
+        x="20" y={fillTop} width="60" height={fillH}
+        fill={`url(#grad-fill-${pct})`}
+        clipPath={`url(#${clipId})`}
+        style={{ transition: 'y 1.2s cubic-bezier(0.4,0,0.2,1), height 1.2s cubic-bezier(0.4,0,0.2,1)' }}
+      />
+
+      {/* Fill ellipse surface at top of liquid (shimmer) */}
+      {pct > 2 && (
+        <ellipse
+          cx="50" cy={fillTop}
+          rx="30" ry="5"
+          fill={color}
+          fillOpacity="0.55"
+          clipPath={`url(#${clipId})`}
+          style={{ transition: 'cy 1.2s cubic-bezier(0.4,0,0.2,1)' }}
+        />
+      )}
+
+      {/* === Cylinder shell === */}
+      <rect
+        x="20" y={bodyTop} width="60" height={bodyH}
+        fill="url(#grad-shell)"
+        stroke="#1e3a5f"
+        strokeWidth="1.5"
+        rx="1"
+      />
+      {/* Highlight stripe */}
+      <rect x="22" y={bodyTop} width="6" height={bodyH} fill="white" fillOpacity="0.04" rx="1" />
+
+      {/* Horizontal ring lines */}
+      {[0.25, 0.5, 0.75].map((f, i) => (
+        <line
+          key={i}
+          x1="20" y1={bodyTop + bodyH * f}
+          x2="80" y2={bodyTop + bodyH * f}
+          stroke="#1e3a5f"
+          strokeWidth="1"
+          strokeDasharray="3,2"
+        />
+      ))}
+
+      {/* === Dome cap === */}
+      <ellipse cx="50" cy={bodyTop} rx="30" ry="9" fill="#1e3a5f" stroke="#334155" strokeWidth="1.2" />
+      <ellipse cx="50" cy={bodyTop} rx="30" ry="9" fill="none" stroke="#2d5a8e" strokeWidth="0.8" />
+      {/* vent pipe on top */}
+      <rect x="47" y="7" width="6" height="12" fill="#334155" rx="2" />
+      <ellipse cx="50" cy="7" rx="3" ry="1.5" fill="#1e3a5f" stroke="#334155" strokeWidth="0.8" />
+
+      {/* === Discharge nozzle === */}
+      <rect x="45" y={coneBot} width="10" height="10" fill="#1e3a5f" stroke="#334155" strokeWidth="1" />
+      <ellipse cx="50" cy={coneBot + 10} rx="5" ry="1.5" fill="#0f172a" stroke="#334155" strokeWidth="0.8" />
+
+      {/* === Ladder (right side) === */}
+      <line x1="78" y1={bodyTop + 10} x2="78" y2={bodyBot - 5} stroke="#334155" strokeWidth="1.5" />
+      <line x1="82" y1={bodyTop + 10} x2="82" y2={bodyBot - 5} stroke="#334155" strokeWidth="1.5" />
+      {Array.from({ length: 8 }).map((_, i) => (
+        <line
+          key={i}
+          x1="78" y1={bodyTop + 15 + i * 18}
+          x2="82" y2={bodyTop + 15 + i * 18}
+          stroke="#334155" strokeWidth="1"
+        />
+      ))}
+
+      {/* === % label === */}
+      <text
+        x="50" y="105"
+        textAnchor="middle"
+        dominantBaseline="middle"
+        fontSize="13"
+        fontWeight="bold"
+        fill={pct < 5 ? '#64748b' : 'white'}
+        style={{ fontFamily: 'monospace' }}
+      >{pct}%</text>
+    </svg>
+  )
+}
+
 // ─── Silo Card ────────────────────────────────────────────────────────────────
 function SiloCard({ silo, onEdit }: { silo: Silo; onEdit: (s: Silo) => void }) {
   const p = pctOf(silo.stock_fisico, silo.capacidad_max)
   const sapD = parseFloat(sapDiffPct(silo.stock_fisico, silo.stock_sap))
-  const planD = parseFloat(sapDiffPct(silo.stock_fisico, silo.stock_plan))
   const borderClass = p < 20 ? 'border-red-500/40' : p < 50 ? 'border-amber-500/30' : 'border-slate-700/40'
-
-  const chartData = [
-    { name: 'Físico', t: silo.stock_fisico, fill: '#3b82f6' },
-    { name: 'SAP',    t: silo.stock_sap,    fill: Math.abs(sapD) > 5 ? '#ef4444' : Math.abs(sapD) > 3 ? '#f59e0b' : '#22c55e' },
-    { name: 'Plan',   t: silo.stock_plan,   fill: '#6366f1' },
-  ]
+  const hasEspacio = silo.espacio_mar != null || silo.espacio_centro != null || silo.espacio_cerro != null
 
   return (
     <div className={`card ${borderClass} card-hover overflow-hidden group animate-fade-in`}>
-      <div className="px-5 pt-5 pb-4">
-        {/* Header */}
-        <div className="flex items-start justify-between mb-4">
+      {/* Header */}
+      <div className="flex items-center justify-between px-5 pt-4 pb-2">
+        <div>
+          <span className="text-blue-400 text-xs font-bold uppercase tracking-widest">{silo.silo}</span>
+          <h3 className="text-white font-bold text-sm mt-0.5 leading-tight">{silo.producto}</h3>
+        </div>
+        <button
+          onClick={() => onEdit(silo)}
+          className="opacity-0 group-hover:opacity-100 btn-ghost p-1.5 text-xs transition-opacity"
+          title="Editar"
+        >✎</button>
+      </div>
+
+      {/* Silo visual + data */}
+      <div className="flex items-start gap-3 px-5 pb-4">
+        {/* Animated SVG silo */}
+        <div className="flex-shrink-0 flex flex-col items-center">
+          <SiloAnimado pct={p} size={90} />
+        </div>
+
+        {/* Right side data */}
+        <div className="flex-1 min-w-0 space-y-3 pt-1">
+          {/* Stock bars */}
           <div>
-            <span className="text-blue-400 text-xs font-bold uppercase tracking-widest">{silo.silo}</span>
-            <h3 className="text-white font-bold text-sm mt-0.5 leading-tight">{silo.producto}</h3>
+            <div className="flex justify-between text-xs mb-1">
+              <span className="text-slate-400">Stock físico</span>
+              <span className="text-white font-bold">{fmt(silo.stock_fisico)} t</span>
+            </div>
+            <LevelBar value={silo.stock_fisico} max={silo.capacidad_max} height="h-2" />
+            <div className="flex justify-between text-xs text-slate-600 mt-0.5">
+              <span>{p}% capacidad</span>
+              <span>Cap. {fmt(silo.capacidad_max)} t</span>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <GaugeRadial value={silo.stock_fisico} max={silo.capacidad_max} size={64} />
-            <button
-              onClick={() => onEdit(silo)}
-              className="opacity-0 group-hover:opacity-100 btn-ghost p-1.5 text-xs transition-opacity"
-              title="Editar"
-            >✎</button>
+
+          {/* SAP diff badge */}
+          <div className="flex gap-2">
+            <div className={`flex-1 rounded-lg px-2 py-1.5 text-center text-xs ${Math.abs(sapD) > 5 ? 'bg-red-500/10 border border-red-500/20' : Math.abs(sapD) > 3 ? 'bg-amber-500/10 border border-amber-500/20' : 'bg-emerald-500/10 border border-emerald-500/20'}`}>
+              <span className="text-slate-500 text-xs">SAP </span>
+              <span className={`font-bold ${diffColor(sapD)}`}>{fmt(silo.stock_sap)} t</span>
+            </div>
+            <div className={`flex-none rounded-lg px-2 py-1.5 text-center text-xs ${Math.abs(sapD) > 5 ? 'bg-red-500/10 border border-red-500/20' : 'bg-slate-700/40 border border-slate-700/30'}`}>
+              <span className={`font-bold ${diffColor(sapD)}`}>{sapD > 0 ? '+' : ''}{sapD}%</span>
+            </div>
           </div>
-        </div>
 
-        {/* Level bar */}
-        <LevelBar value={silo.stock_fisico} max={silo.capacidad_max} height="h-2.5" />
-        <div className="flex justify-between text-xs text-slate-500 mt-1 mb-4">
-          <span>{fmt(silo.stock_fisico)} t</span>
-          <span>Cap. {fmt(silo.capacidad_max)} t</span>
+          {/* Espacio libre medición */}
+          {hasEspacio && (
+            <div className="bg-slate-800/60 rounded-xl p-2.5 border border-slate-700/30">
+              <p className="text-slate-500 text-xs font-semibold mb-1.5 uppercase tracking-wide">Espacio Libre (m)</p>
+              <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+                {silo.espacio_mar != null && (
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">L.Mar</span>
+                    <span className="text-slate-200 font-mono font-semibold">{fmtDec(silo.espacio_mar, 2)}</span>
+                  </div>
+                )}
+                {silo.espacio_centro != null && (
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Centro</span>
+                    <span className="text-slate-200 font-mono font-semibold">{fmtDec(silo.espacio_centro, 2)}</span>
+                  </div>
+                )}
+                {silo.espacio_cerro != null && (
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">L.Cerro</span>
+                    <span className="text-slate-200 font-mono font-semibold">{fmtDec(silo.espacio_cerro, 2)}</span>
+                  </div>
+                )}
+                {silo.espacio_promedio != null && (
+                  <div className="flex justify-between col-span-2 pt-1 border-t border-slate-700/30 mt-0.5">
+                    <span className="text-blue-400 font-semibold">Promedio</span>
+                    <span className="text-blue-300 font-mono font-bold">{fmtDec(silo.espacio_promedio, 2)} m</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
+      </div>
 
-        {/* Comparison chart */}
-        <div className="h-20">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={chartData} barSize={20} margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
-              <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false} />
-              <YAxis hide domain={[0, silo.capacidad_max]} />
-              <Tooltip
-                contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 8, fontSize: 11 }}
-                formatter={(v: number) => [`${fmt(v)} t`, '']}
-              />
-              <Bar dataKey="t" radius={[3, 3, 0, 0]}>
-                {chartData.map((d, i) => <Cell key={i} fill={d.fill} fillOpacity={0.85} />)}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-
-        {/* Diffs */}
-        <div className="grid grid-cols-2 gap-2 mt-3">
-          <div className={`rounded-xl px-3 py-2 text-center text-xs ${Math.abs(sapD) > 5 ? 'bg-red-500/10 border border-red-500/20' : Math.abs(sapD) > 3 ? 'bg-amber-500/10 border border-amber-500/20' : 'bg-emerald-500/10 border border-emerald-500/20'}`}>
-            <span className="text-slate-500">Δ SAP  </span>
-            <span className={`font-bold ${diffColor(sapD)}`}>{sapD > 0 ? '+' : ''}{sapD}%</span>
-          </div>
-          <div className={`rounded-xl px-3 py-2 text-center text-xs ${Math.abs(planD) > 5 ? 'bg-red-500/10 border border-red-500/20' : 'bg-slate-700/40 border border-slate-700/30'}`}>
-            <span className="text-slate-500">Δ Plan  </span>
-            <span className={`font-bold ${diffColor(planD)}`}>{planD > 0 ? '+' : ''}{planD}%</span>
-          </div>
-        </div>
-
-        {silo.observaciones && (
-          <p className="text-slate-500 text-xs italic mt-3 truncate" title={silo.observaciones}>
+      {silo.observaciones && (
+        <div className="px-5 pb-3">
+          <p className="text-slate-500 text-xs italic truncate" title={silo.observaciones}>
             "{silo.observaciones}"
           </p>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -242,13 +406,54 @@ function TolvaRow({ tolva, consumo, onEdit }: {
   )
 }
 
+// ─── Tanque SVG (vertical cylinder gauge) ─────────────────────────────────────
+function TanqueSVG({ pct, isGLP }: { pct: number; isGLP: boolean }) {
+  const color = isGLP
+    ? (pct >= 50 ? '#f97316' : pct >= 25 ? '#eab308' : '#ef4444')
+    : (pct >= 50 ? '#06b6d4' : pct >= 25 ? '#f59e0b' : '#ef4444')
+  const fillH = (pct / 100) * 70
+  const fillTop = 15 + (70 - fillH)
+  return (
+    <svg viewBox="0 0 50 110" width="44" height="88" className="flex-shrink-0">
+      <defs>
+        <linearGradient id={`tg-${isGLP ? 'glp' : 'add'}`} x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stopColor={color} stopOpacity="0.5" />
+          <stop offset="50%" stopColor={color} stopOpacity="0.9" />
+          <stop offset="100%" stopColor={color} stopOpacity="0.5" />
+        </linearGradient>
+      </defs>
+      {/* Shell */}
+      <rect x="8" y="10" width="34" height="75" rx="4" fill="#0f172a" stroke="#1e3a5f" strokeWidth="1.5" />
+      {/* Fill */}
+      <rect x="9" y={fillTop} width="32" height={fillH} rx="3"
+        fill={`url(#tg-${isGLP ? 'glp' : 'add'})`}
+        style={{ transition: 'y 1s ease, height 1s ease' }}
+      />
+      {/* Horizontal scale lines */}
+      {[0.25, 0.5, 0.75].map((f, i) => (
+        <line key={i} x1="9" y1={15 + f * 70} x2="41" y2={15 + f * 70}
+          stroke="#1e3a5f" strokeWidth="0.8" />
+      ))}
+      {/* Percent label */}
+      <text x="25" y="54" textAnchor="middle" dominantBaseline="middle"
+        fontSize="9" fontWeight="bold" fill={pct < 10 ? '#475569' : 'white'}
+        fontFamily="monospace">{pct}%</text>
+      {/* Bottom nozzle */}
+      <rect x="20" y="85" width="10" height="8" rx="2" fill="#1e3a5f" stroke="#334155" strokeWidth="1" />
+      {/* Top cap */}
+      <ellipse cx="25" cy="10" rx="17" ry="4" fill="#1e3a5f" stroke="#334155" strokeWidth="1" />
+      <rect x="22" y="5" width="6" height="6" rx="1" fill="#334155" />
+    </svg>
+  )
+}
+
 // ─── Tanque Card ──────────────────────────────────────────────────────────────
 function TanqueCard({ tanque, onEdit }: { tanque: Tanque; onEdit: (t: Tanque) => void }) {
   const sapD = parseFloat(sapDiffPct(tanque.stock_real, tanque.stock_sap))
   const autonomiaH = tanque.consumo_estimado > 0
     ? (tanque.stock_real / tanque.consumo_estimado) * 24 : 999
-  const maxRef = tanque.tipo === 'GLP' ? 45000 : tanque.unidad === 'lt' ? 6000 : 2000
-  const levP = pctOf(tanque.stock_real, maxRef)
+  const capacidad = tanque.capacidad_diseno ?? (tanque.tipo === 'GLP' ? 4000 : 10000)
+  const levP = tanque.porcentaje != null ? Math.round(tanque.porcentaje) : pctOf(tanque.stock_real, capacidad)
 
   const isGLP = tanque.tipo === 'GLP'
   const cardGradient = isGLP
@@ -259,45 +464,58 @@ function TanqueCard({ tanque, onEdit }: { tanque: Tanque; onEdit: (t: Tanque) =>
 
   return (
     <div className={`card ${borderClass} ${cardGradient} card-hover p-5 group animate-fade-in`}>
-      <div className="flex items-start justify-between mb-4">
-        <div>
-          <span className={`text-xs font-bold uppercase tracking-widest ${typeColor}`}>{tanque.tipo}</span>
-          <h3 className="text-white font-bold text-sm mt-0.5">{tanque.nombre}</h3>
-        </div>
-        <button
-          onClick={() => onEdit(tanque)}
-          className="opacity-0 group-hover:opacity-100 btn-ghost p-1.5 text-xs transition-opacity"
-        >✎</button>
-      </div>
+      <div className="flex items-start gap-3">
+        {/* Tank SVG */}
+        <TanqueSVG pct={levP} isGLP={isGLP} />
 
-      <div className="mb-4">
-        <div className="flex justify-between text-xs text-slate-400 mb-1.5">
-          <span>Nivel actual</span>
-          <span className="text-white font-semibold">{fmt(tanque.stock_real)} {tanque.unidad}</span>
-        </div>
-        <LevelBar value={tanque.stock_real} max={maxRef} height="h-3" />
-      </div>
+        {/* Content */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-start justify-between mb-1">
+            <div>
+              <span className={`text-xs font-bold uppercase tracking-widest ${typeColor}`}>{tanque.tipo}</span>
+              <h3 className="text-white font-bold text-sm mt-0.5 leading-tight">{tanque.nombre}</h3>
+              {tanque.codigo && <span className="text-slate-600 text-xs font-mono">{tanque.codigo}</span>}
+            </div>
+            <button
+              onClick={() => onEdit(tanque)}
+              className="opacity-0 group-hover:opacity-100 btn-ghost p-1.5 text-xs transition-opacity"
+            >✎</button>
+          </div>
 
-      <div className="grid grid-cols-3 gap-2 text-center">
-        <div className="bg-slate-800/60 rounded-xl p-2.5">
-          <p className="text-slate-500 text-xs">SAP</p>
-          <p className={`font-bold text-sm ${diffColor(sapD)}`}>{fmt(tanque.stock_sap)}</p>
-        </div>
-        <div className="bg-slate-800/60 rounded-xl p-2.5">
-          <p className="text-slate-500 text-xs">Consumo</p>
-          <p className="text-blue-300 font-bold text-sm">{tanque.consumo_estimado > 0 ? fmt(tanque.consumo_estimado) : '—'}</p>
-        </div>
-        <div className="bg-slate-800/60 rounded-xl p-2.5">
-          <p className="text-slate-500 text-xs">Autonomía</p>
-          <p className={`font-bold text-sm ${autColor(autonomiaH)}`}>{autStr(autonomiaH)}</p>
+          <div className="mt-2 mb-3">
+            <div className="flex justify-between text-xs text-slate-400 mb-1">
+              <span>Nivel</span>
+              <span className="text-white font-semibold">{fmt(tanque.stock_real)} {tanque.unidad}</span>
+            </div>
+            <LevelBar value={levP} max={100} height="h-2.5" />
+            <div className="flex justify-between text-xs text-slate-600 mt-0.5">
+              <span>{levP}%</span>
+              <span>Cap. {fmt(capacidad)} {tanque.unidad}</span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-1.5 text-center">
+            <div className="bg-slate-800/60 rounded-lg p-2">
+              <p className="text-slate-500 text-xs">SAP</p>
+              <p className={`font-bold text-xs ${diffColor(sapD)}`}>{fmt(tanque.stock_sap)}</p>
+            </div>
+            <div className="bg-slate-800/60 rounded-lg p-2">
+              <p className="text-slate-500 text-xs">Consumo</p>
+              <p className="text-blue-300 font-bold text-xs">{tanque.consumo_estimado > 0 ? fmt(tanque.consumo_estimado) : '—'}</p>
+            </div>
+            <div className="bg-slate-800/60 rounded-lg p-2">
+              <p className="text-slate-500 text-xs">Autonomía</p>
+              <p className={`font-bold text-xs ${autColor(autonomiaH)}`}>{autStr(autonomiaH)}</p>
+            </div>
+          </div>
+
+          {Math.abs(sapD) > 5 && (
+            <div className="mt-2 bg-red-500/10 border border-red-500/20 text-red-400 text-xs rounded-lg p-1.5 text-center">
+              ⚠ Δ SAP: {sapD > 0 ? '+' : ''}{sapD}%
+            </div>
+          )}
         </div>
       </div>
-
-      {Math.abs(sapD) > 5 && (
-        <div className="mt-3 bg-red-500/10 border border-red-500/20 text-red-400 text-xs rounded-xl p-2 text-center">
-          ⚠ Δ SAP: {sapD > 0 ? '+' : ''}{sapD}%
-        </div>
-      )}
     </div>
   )
 }
@@ -307,40 +525,81 @@ function EditSiloModal({ silo, onClose, onSave }: {
   silo: Silo; onClose: () => void; onSave: (d: Partial<Silo>) => void
 }) {
   const [form, setForm] = useState({
-    stock_fisico: silo.stock_fisico,
-    stock_sap: silo.stock_sap,
-    stock_plan: silo.stock_plan,
-    densidad: silo.densidad,
-    capacidad_max: silo.capacidad_max,
-    observaciones: silo.observaciones,
+    stock_fisico:    silo.stock_fisico,
+    stock_sap:       silo.stock_sap,
+    stock_plan:      silo.stock_plan,
+    densidad:        silo.densidad,
+    capacidad_max:   silo.capacidad_max,
+    espacio_mar:     silo.espacio_mar ?? '',
+    espacio_centro:  silo.espacio_centro ?? '',
+    espacio_cerro:   silo.espacio_cerro ?? '',
+    espacio_promedio:silo.espacio_promedio ?? '',
+    hora:            silo.hora ?? '',
+    realizado_por:   silo.realizado_por ?? '',
+    observaciones:   silo.observaciones,
   })
   const setN = (k: string, v: string) =>
-    setForm(f => ({ ...f, [k]: k === 'observaciones' ? v : parseFloat(v) || 0 }))
+    setForm(f => ({ ...f, [k]: ['observaciones','hora','realizado_por'].includes(k) ? v : (v === '' ? '' : parseFloat(v) || 0) }))
 
-  const fields: [string, string][] = [
+  const stockFields: [string, string][] = [
     ['Stock Físico (t)', 'stock_fisico'],
-    ['Stock SAP (t)', 'stock_sap'],
-    ['Stock Plan (t)', 'stock_plan'],
+    ['Stock SAP (t)',    'stock_sap'],
+    ['Stock Plan (t)',   'stock_plan'],
     ['Densidad (t/m³)', 'densidad'],
-    ['Capacidad Máx (t)', 'capacidad_max'],
+    ['Capacidad Máx (t)','capacidad_max'],
+  ]
+  const espacioFields: [string, string][] = [
+    ['L. Mar (m)',    'espacio_mar'],
+    ['Centro (m)',    'espacio_centro'],
+    ['L. Cerro (m)',  'espacio_cerro'],
+    ['Promedio (m)',  'espacio_promedio'],
   ]
 
   return (
     <Modal title={`${silo.silo} — ${silo.producto}`} onClose={onClose}>
-      <div className="space-y-4">
+      <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
+        <p className="text-slate-500 text-xs font-semibold uppercase tracking-wide">Stock</p>
         <div className="grid grid-cols-2 gap-3">
-          {fields.map(([label, key]) => (
+          {stockFields.map(([label, key]) => (
             <div key={key}>
               <label className="label">{label}</label>
               <input
                 type="number" step="0.01"
-                value={(form as Record<string, number | string>)[key] as number}
+                value={(form as Record<string, number | string>)[key]}
                 onChange={e => setN(key, e.target.value)}
                 className="input-dark"
               />
             </div>
           ))}
         </div>
+
+        <p className="text-slate-500 text-xs font-semibold uppercase tracking-wide pt-1">Espacio Libre (Medición)</p>
+        <div className="grid grid-cols-2 gap-3">
+          {espacioFields.map(([label, key]) => (
+            <div key={key}>
+              <label className="label">{label}</label>
+              <input
+                type="number" step="0.01"
+                value={(form as Record<string, number | string>)[key]}
+                onChange={e => setN(key, e.target.value)}
+                placeholder="—"
+                className="input-dark"
+              />
+            </div>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="label">Hora medición</label>
+            <input type="time" value={form.hora} onChange={e => setN('hora', e.target.value)} className="input-dark" />
+          </div>
+          <div>
+            <label className="label">Realizado por</label>
+            <input value={form.realizado_por} onChange={e => setN('realizado_por', e.target.value)} placeholder="Operador" className="input-dark" />
+          </div>
+        </div>
+
         <div>
           <label className="label">Observaciones</label>
           <textarea
@@ -352,7 +611,7 @@ function EditSiloModal({ silo, onClose, onSave }: {
         </div>
         <div className="flex gap-3 pt-1">
           <button onClick={onClose} className="flex-1 btn-ghost py-2.5 text-sm">Cancelar</button>
-          <button onClick={() => onSave(form)} className="flex-1 btn-primary py-2.5 text-sm">Guardar Cambios</button>
+          <button onClick={() => onSave(form as Partial<Silo>)} className="flex-1 btn-primary py-2.5 text-sm">Guardar Cambios</button>
         </div>
       </div>
     </Modal>
