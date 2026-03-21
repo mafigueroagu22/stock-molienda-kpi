@@ -10,7 +10,7 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
   RadialBarChart, RadialBar, PolarAngleAxis,
 } from 'recharts'
-import { format } from 'date-fns'
+import { format, subDays, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
 import type { Silo, Tolva, Tanque, Despacho, Consumo, Alert } from '@/lib/types'
 
@@ -635,7 +635,16 @@ function JsonPanel({ data }: { data: Record<string, unknown> }) {
 }
 
 // ─── Main Dashboard ───────────────────────────────────────────────────────────
-type Tab = 'silos' | 'tolvas' | 'tanques' | 'despacho' | 'consumos'
+type Tab = 'silos' | 'tolvas' | 'tanques' | 'despacho' | 'consumos' | 'historia'
+
+type HistoriaRow = {
+  fecha: string
+  material?: string
+  silo?: string
+  stock_fisico?: number
+  cantidad_ton?: number
+  producto?: string
+}
 
 export default function Dashboard() {
   const router = useRouter()
@@ -646,13 +655,18 @@ export default function Dashboard() {
   const [tanques,   setTanques]   = useState<Tanque[]>([])
   const [despachos, setDespachos] = useState<Despacho[]>([])
   const [consumos,  setConsumos]  = useState<Consumo[]>([])
-  const [loading,   setLoading]   = useState(true)
-  const [tab,       setTab]       = useState<Tab>('silos')
-  const [jsonView,  setJsonView]  = useState(false)
-  const [editSilo,   setEditSilo]   = useState<Silo | null>(null)
-  const [editTolva,  setEditTolva]  = useState<Tolva | null>(null)
-  const [editTanque, setEditTanque] = useState<Tanque | null>(null)
-  const [lastUpdated, setLastUpdated] = useState('')
+  const [loading,      setLoading]      = useState(true)
+  const [tab,          setTab]          = useState<Tab>('silos')
+  const [jsonView,     setJsonView]     = useState(false)
+  const [editSilo,     setEditSilo]     = useState<Silo | null>(null)
+  const [editTolva,    setEditTolva]    = useState<Tolva | null>(null)
+  const [editTanque,   setEditTanque]   = useState<Tanque | null>(null)
+  const [lastUpdated,  setLastUpdated]  = useState('')
+  const [selectedDate, setSelectedDate] = useState(todayStr)
+  const [historiaS,    setHistoriaS]    = useState<HistoriaRow[]>([])
+  const [historiaT,    setHistoriaT]    = useState<HistoriaRow[]>([])
+  const [historiaD,    setHistoriaD]    = useState<HistoriaRow[]>([])
+  const [loadingHist,  setLoadingHist]  = useState(false)
 
   // ── Auth guard ──────────────────────────────────────────────
   useEffect(() => {
@@ -675,10 +689,10 @@ export default function Dashboard() {
 
   const loadAll = useCallback(async () => {
     const [s, t, tk, d, c] = await Promise.all([
-      sb.from('stock_silos').select('*').eq('fecha', todayStr),
-      sb.from('stock_tolvas').select('*').eq('fecha', todayStr),
-      sb.from('stock_tanques').select('*').eq('fecha', todayStr),
-      sb.from('despacho_cemento').select('*').eq('fecha', todayStr).order('created_at', { ascending: false }),
+      sb.from('stock_silos').select('*').eq('fecha', selectedDate),
+      sb.from('stock_tolvas').select('*').eq('fecha', selectedDate),
+      sb.from('stock_tanques').select('*').eq('fecha', selectedDate),
+      sb.from('despacho_cemento').select('*').eq('fecha', selectedDate).order('created_at', { ascending: false }),
       sb.from('consumos_programados').select('*').eq('activo', true).order('material'),
     ])
     setSilos(s.data ?? [])
@@ -688,9 +702,24 @@ export default function Dashboard() {
     setConsumos(c.data ?? [])
     setLoading(false)
     setLastUpdated(format(new Date(), 'HH:mm:ss'))
+  }, [selectedDate])
+
+  const loadHistory = useCallback(async () => {
+    setLoadingHist(true)
+    const desde = format(subDays(new Date(), 30), 'yyyy-MM-dd')
+    const [s, t, d] = await Promise.all([
+      sb.from('stock_silos').select('fecha,silo,producto,stock_fisico').gte('fecha', desde).order('fecha'),
+      sb.from('stock_tolvas').select('fecha,material,stock_fisico').gte('fecha', desde).order('fecha'),
+      sb.from('despacho_cemento').select('fecha,cantidad_ton,producto').gte('fecha', desde).order('fecha'),
+    ])
+    setHistoriaS(s.data ?? [])
+    setHistoriaT(t.data ?? [])
+    setHistoriaD(d.data ?? [])
+    setLoadingHist(false)
   }, [])
 
   useEffect(() => { loadAll() }, [loadAll])
+  useEffect(() => { if (tab === 'historia') loadHistory() }, [tab, loadHistory])
 
   // Realtime subscriptions
   useEffect(() => {
@@ -772,12 +801,30 @@ export default function Dashboard() {
     loadAll()
   }
 
+  const exportCSV = () => {
+    const rows: string[] = []
+    rows.push('TIPO,NOMBRE,STOCK FISICO,SAP,PLAN,FECHA')
+    silos.forEach(s  => rows.push(`Silo,${s.silo} - ${s.producto},${s.stock_fisico},${s.stock_sap},${s.stock_plan},${s.fecha}`))
+    tolvas.forEach(t => rows.push(`Tolva,${t.material},${t.stock_fisico},${t.stock_sap},${t.stock_plan},${t.fecha}`))
+    tanques.forEach(t => rows.push(`Tanque,${t.nombre},${t.stock_real},${t.stock_sap},,${t.fecha}`))
+    rows.push('')
+    rows.push('DESPACHO,SILO,PRODUCTO,CANTIDAD (t),TIPO,CLIENTE,FECHA')
+    despachos.forEach(d => rows.push(`Despacho,${d.silo_origen},${d.producto},${d.cantidad_ton},${d.tipo_despacho},${d.cliente},${d.fecha}`))
+    const csv = rows.join('\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = `stock_molienda_${selectedDate}.csv`
+    a.click()
+  }
+
   const TABS: { id: Tab; label: string; icon: string; count: number }[] = [
     { id: 'silos',    label: 'Silos Cemento',   icon: '🏭', count: silos.length },
     { id: 'tolvas',   label: 'Mat. Primas',      icon: '🏗️', count: tolvas.length },
     { id: 'tanques',  label: 'GLP / Aditivos',   icon: '🔥', count: tanques.length },
     { id: 'despacho', label: 'Despacho',          icon: '🚚', count: despachos.length },
     { id: 'consumos', label: 'Consumos',          icon: '⚙️', count: consumos.length },
+    { id: 'historia', label: 'Historial',         icon: '📅', count: 30 },
   ]
 
   if (!authReady) return (
@@ -798,7 +845,43 @@ export default function Dashboard() {
     </div>
   )
 
-  const jsonData = { fecha: todayStr, silos, tolvas, tanques, despachos, consumos }
+  const jsonData = { fecha: selectedDate, silos, tolvas, tanques, despachos, consumos }
+
+  // ── Historia: calcular datos por fecha ──────────────────────
+  const histSilosDias = useMemo(() => {
+    const dias: Record<string, number> = {}
+    historiaS.forEach(r => {
+      dias[r.fecha!] = (dias[r.fecha!] ?? 0) + (r.stock_fisico ?? 0)
+    })
+    return Object.entries(dias).map(([fecha, total]) => ({
+      fecha: format(parseISO(fecha), 'dd/MM', { locale: es }),
+      total: Math.round(total),
+    })).slice(-14)
+  }, [historiaS])
+
+  const histTolvasMat = useMemo(() => {
+    const materiales = Array.from(new Set(historiaT.map(r => r.material!)))
+    const dias = Array.from(new Set(historiaT.map(r => r.fecha!))).sort().slice(-14)
+    return dias.map(fecha => {
+      const row: Record<string, string | number> = { fecha: format(parseISO(fecha), 'dd/MM', { locale: es }) }
+      materiales.forEach(m => {
+        const found = historiaT.find(r => r.fecha === fecha && r.material === m)
+        row[m] = found?.stock_fisico ?? 0
+      })
+      return row
+    })
+  }, [historiaT])
+
+  const histDespacho = useMemo(() => {
+    const dias: Record<string, number> = {}
+    historiaD.forEach(r => {
+      dias[r.fecha!] = (dias[r.fecha!] ?? 0) + (r.cantidad_ton ?? 0)
+    })
+    return Object.entries(dias).map(([fecha, total]) => ({
+      fecha: format(parseISO(fecha), 'dd/MM', { locale: es }),
+      total: Math.round(total),
+    })).slice(-14)
+  }, [historiaD])
 
   return (
     <div className="min-h-screen bg-navy-900">
@@ -818,21 +901,41 @@ export default function Dashboard() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap justify-end">
+            {/* Date picker */}
+            <div className="flex items-center gap-1.5 bg-slate-800 border border-slate-700/60 rounded-xl px-3 py-1.5">
+              <span className="text-slate-500 text-xs">📅</span>
+              <input
+                type="date"
+                value={selectedDate}
+                max={todayStr}
+                onChange={e => setSelectedDate(e.target.value)}
+                className="bg-transparent text-slate-200 text-xs font-medium focus:outline-none cursor-pointer"
+                title="Seleccionar fecha"
+              />
+              {selectedDate !== todayStr && (
+                <button
+                  onClick={() => setSelectedDate(todayStr)}
+                  className="text-blue-400 hover:text-blue-300 text-xs ml-1"
+                  title="Volver a hoy"
+                >Hoy</button>
+              )}
+            </div>
             {lastUpdated && (
-              <span className="text-slate-600 text-xs hidden lg:block">
-                ↻ {lastUpdated}
-              </span>
+              <span className="text-slate-600 text-xs hidden lg:block">↻ {lastUpdated}</span>
             )}
+            <button
+              onClick={exportCSV}
+              className="btn-ghost px-3 py-1.5 text-xs text-emerald-400 hover:text-emerald-300"
+              title="Exportar CSV para Google Sheets"
+            >⬇ CSV</button>
             <button
               onClick={() => setJsonView(v => !v)}
               className={`px-3 py-1.5 rounded-lg text-xs font-mono font-semibold transition-all ${jsonView ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'btn-ghost text-slate-400'}`}
             >
               {'{ }'} JSON
             </button>
-            <button onClick={loadAll} className="btn-ghost px-3 py-1.5 text-xs" title="Actualizar">
-              ↻
-            </button>
+            <button onClick={loadAll} className="btn-ghost px-3 py-1.5 text-xs" title="Actualizar">↻</button>
             <div className="flex items-center gap-1.5 hidden sm:flex">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse-slow" />
               <span className="text-slate-500 text-xs">Live</span>
@@ -1078,6 +1181,146 @@ export default function Dashboard() {
                 </tbody>
               </table>
             </div>
+          </div>
+        )}
+
+        {/* ── Tab: HISTORIA ── */}
+        {tab === 'historia' && (
+          <div className="space-y-6 animate-slide-up">
+            {loadingHist ? (
+              <div className="text-center py-20">
+                <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+                <p className="text-slate-500 text-sm">Cargando historial 30 días…</p>
+              </div>
+            ) : (
+              <>
+                {/* Google Sheets banner */}
+                <div className="card p-4 bg-emerald-500/5 border-emerald-500/15 flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-emerald-300 font-semibold text-sm">🔗 Integración Google Sheets</p>
+                    <p className="text-slate-400 text-xs mt-0.5">
+                      Descarga el CSV de cualquier día y ábrelo en Sheets, o usa la URL de la API directamente.
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={exportCSV}
+                      className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-xl text-xs font-semibold transition-all"
+                    >⬇ Exportar CSV</button>
+                    <button
+                      onClick={() => {
+                        const url = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/stock_silos?fecha=eq.${selectedDate}&select=*`
+                        navigator.clipboard.writeText(url)
+                        alert('URL copiada — úsala en Google Sheets con la función =IMPORTDATA()')
+                      }}
+                      className="btn-ghost px-4 py-2 text-xs font-semibold text-slate-300"
+                    >📋 Copiar URL API</button>
+                  </div>
+                </div>
+
+                {/* Chart 1: Stock total silos por día */}
+                <div className="card p-5">
+                  <h3 className="text-white font-bold text-sm mb-1">Stock Total Silos — Últimos 14 días</h3>
+                  <p className="text-slate-500 text-xs mb-4">Suma de stock físico en todos los silos por día</p>
+                  {histSilosDias.length === 0 ? (
+                    <p className="text-slate-600 text-sm text-center py-8">Sin datos históricos aún. Los datos se acumulan cada día.</p>
+                  ) : (
+                    <div className="h-48">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={histSilosDias} margin={{ top: 0, right: 8, bottom: 0, left: 0 }}>
+                          <XAxis dataKey="fecha" tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false} />
+                          <YAxis tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false} tickFormatter={v => `${Math.round(v/1000)}k`} />
+                          <Tooltip
+                            contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 8, fontSize: 11 }}
+                            formatter={(v: number) => [`${fmt(v)} t`, 'Total silos']}
+                          />
+                          <Bar dataKey="total" fill="#3b82f6" radius={[4, 4, 0, 0]} fillOpacity={0.85} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  )}
+                </div>
+
+                {/* Chart 2: Despacho por día */}
+                <div className="card p-5">
+                  <h3 className="text-white font-bold text-sm mb-1">Despacho Diario — Últimos 14 días</h3>
+                  <p className="text-slate-500 text-xs mb-4">Toneladas despachadas por día</p>
+                  {histDespacho.length === 0 ? (
+                    <p className="text-slate-600 text-sm text-center py-8">Sin registros de despacho histórico aún.</p>
+                  ) : (
+                    <div className="h-48">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={histDespacho} margin={{ top: 0, right: 8, bottom: 0, left: 0 }}>
+                          <XAxis dataKey="fecha" tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false} />
+                          <YAxis tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false} />
+                          <Tooltip
+                            contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 8, fontSize: 11 }}
+                            formatter={(v: number) => [`${fmt(v)} t`, 'Despacho']}
+                          />
+                          <Bar dataKey="total" fill="#22c55e" radius={[4, 4, 0, 0]} fillOpacity={0.85} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  )}
+                </div>
+
+                {/* Chart 3: Materias primas por día */}
+                <div className="card p-5">
+                  <h3 className="text-white font-bold text-sm mb-1">Stock Materias Primas — Últimos 14 días</h3>
+                  <p className="text-slate-500 text-xs mb-4">Evolución diaria de stock físico por material</p>
+                  {histTolvasMat.length === 0 ? (
+                    <p className="text-slate-600 text-sm text-center py-8">Sin datos históricos de materias primas aún.</p>
+                  ) : (
+                    <div className="h-56">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={histTolvasMat} margin={{ top: 0, right: 8, bottom: 0, left: 0 }}>
+                          <XAxis dataKey="fecha" tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false} />
+                          <YAxis tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false} tickFormatter={v => `${Math.round(v/1000)}k`} />
+                          <Tooltip
+                            contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 8, fontSize: 11 }}
+                            formatter={(v: number) => [`${fmt(v)} t`, '']}
+                          />
+                          {['Clinker','Puzolana','Ceniza Volante','Yeso','Caliza'].map((m, i) => (
+                            <Bar key={m} dataKey={m} stackId="a" fill={['#3b82f6','#22c55e','#f59e0b','#8b5cf6','#06b6d4'][i]} fillOpacity={0.85} />
+                          ))}
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  )}
+                </div>
+
+                {/* Tabla despacho histórico */}
+                <div className="card overflow-hidden">
+                  <div className="px-5 py-4 border-b border-slate-700/50">
+                    <h3 className="text-white font-bold text-sm">Registro de Despachos — Últimos 30 días</h3>
+                  </div>
+                  <div className="overflow-auto max-h-72">
+                    <table className="w-full text-sm">
+                      <thead className="sticky top-0 bg-slate-800/95 border-b border-slate-700/50">
+                        <tr>
+                          {['Fecha','Producto','Cantidad','Tipo'].map(h => (
+                            <th key={h} className={`px-4 py-3 text-xs font-semibold text-slate-400 uppercase ${h==='Cantidad' ? 'text-right' : 'text-left'}`}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {historiaD.slice().reverse().map((d, i) => (
+                          <tr key={i} className="border-b border-slate-700/30 hover:bg-slate-700/15">
+                            <td className="px-4 py-3 text-blue-300 font-mono text-xs">{d.fecha}</td>
+                            <td className="px-4 py-3 text-slate-200">{d.producto}</td>
+                            <td className="px-4 py-3 text-white font-bold text-right">{fmt(d.cantidad_ton ?? 0)} t</td>
+                            <td className="px-4 py-3 text-slate-400 text-xs">—</td>
+                          </tr>
+                        ))}
+                        {historiaD.length === 0 && (
+                          <tr><td colSpan={4} className="text-center py-10 text-slate-600">Sin despachos en los últimos 30 días</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         )}
       </div>
